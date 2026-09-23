@@ -1,0 +1,35 @@
+name: Build Firmware
+
+on:
+  push:
+    workflow_dispatch:
+
+    jobs:
+      build:
+          runs-on: ubuntu-latest
+              steps:
+                    - uses: actions/checkout@v4
+
+                          - uses: arduino/setup-arduino-cli@v1
+
+                                - name: Configure
+                                        run: |
+                                                  arduino-cli config init
+                                                            arduino-cli config add board_manager.additional_urls https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
+                                                                      arduino-cli core update-index
+
+                                                                            - name: List available M5Stack boards (для проверки имени платы)
+                                                                                    run: arduino-cli board listall | grep -i stick || true
+
+                                                                                          - name: Install core & library
+                                                                                                  run: |
+                                                                                                            arduino-cli core install m5stack:esp32
+                                                                                                                      arduino-cli lib install M5Unified
+
+                                                                                                                            - name: Compile
+                                                                                                                                    run: arduino-cli compile --fqbn m5stack:esp32:m5stack_stickc_s3 --output-dir build ./FlappyStick
+
+                                                                                                                                          - uses: actions/upload-artifact@v4
+                                                                                                                                                  with:
+                                                                                                                                                            name: firmware-bin
+                                                                                                                                                                      path: build/*.bin
