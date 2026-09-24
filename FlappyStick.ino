@@ -1,10 +1,11 @@
 #include <M5Unified.h>
+#include <Preferences.h>
 #include "sprites.h"
-#include "sounds.h"
 
 #define IR_LED_PIN 46
 
 M5Canvas canvas(&M5.Lcd);
+Preferences prefs;
 
 int screenW, screenH;
 const int groundHeight = 16;
@@ -31,6 +32,7 @@ const float pipeSpacing = 150;
 int score = 0, bestScore = 0;
 float bgOffset = 0;
 float groundOffset = 0;
+uint8_t currentRotation = 1;
 
 enum GameState { WAITING, PLAYING, GAMEOVER };
 GameState state = WAITING;
@@ -54,17 +56,24 @@ void resetGame() {
   }
 }
 
+void applyRotation() {
+  M5.Lcd.setRotation(currentRotation);
+  screenW = M5.Lcd.width();
+  screenH = M5.Lcd.height();
+  birdX = screenW / 4;
+}
+
 void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
-  M5.Lcd.setRotation(1);
 
   pinMode(IR_LED_PIN, OUTPUT);
   digitalWrite(IR_LED_PIN, LOW);
 
-  screenW = M5.Lcd.width();
-  screenH = M5.Lcd.height();
-  birdX = screenW / 4;
+  prefs.begin("flappy", false);
+  bestScore = prefs.getInt("best", 0);
+
+  applyRotation();
   canvas.setColorDepth(16);
   canvas.createSprite(screenW, screenH);
   canvas.setSwapBytes(true);
@@ -179,6 +188,12 @@ void drawGameOver() {
 
 void loop() {
   M5.update();
+
+  if (M5.BtnB.wasPressed()) {
+    currentRotation = (currentRotation == 1) ? 3 : 1;
+    applyRotation();
+  }
+
   groundOffset += pipeSpeed;
   bgOffset += pipeSpeed * 0.4;
 
@@ -200,7 +215,6 @@ void loop() {
 
   if (M5.BtnA.wasPressed()) {
     birdVelocity = jumpStrength;
-    M5.Speaker.playRaw(sfx_wing, sfx_wing_len, SFX_SAMPLE_RATE);
   }
 
   birdVelocity += gravity;
@@ -221,7 +235,6 @@ void loop() {
     if (!pipes[i].scored && pipes[i].x + pipeWidth < birdX) {
       pipes[i].scored = true;
       score++;
-      M5.Speaker.playRaw(sfx_swoosh, sfx_swoosh_len, SFX_SAMPLE_RATE);
     }
     if (birdX + birdRadius > pipes[i].x - pipeCapExtra && birdX - birdRadius < pipes[i].x + pipeWidth + pipeCapExtra) {
       if (birdY - birdRadius < pipes[i].gapY || birdY + birdRadius > pipes[i].gapY + gapHeight)
@@ -230,10 +243,10 @@ void loop() {
   }
 
   if (collided) {
-    M5.Speaker.playRaw(sfx_hit, sfx_hit_len, SFX_SAMPLE_RATE);
-    delay(150);
-    M5.Speaker.playRaw(sfx_die, sfx_die_len, SFX_SAMPLE_RATE);
-    if (score > bestScore) bestScore = score;
+    if (score > bestScore) {
+      bestScore = score;
+      prefs.putInt("best", bestScore);
+    }
     state = GAMEOVER;
   }
 
