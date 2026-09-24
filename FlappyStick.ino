@@ -2,6 +2,8 @@
 #include "sprites.h"
 #include "sounds.h"
 
+#define IR_LED_PIN 46
+
 M5Canvas canvas(&M5.Lcd);
 
 int screenW, screenH;
@@ -56,11 +58,16 @@ void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
   M5.Lcd.setRotation(1);
+
+  pinMode(IR_LED_PIN, OUTPUT);
+  digitalWrite(IR_LED_PIN, LOW);
+
   screenW = M5.Lcd.width();
   screenH = M5.Lcd.height();
   birdX = screenW / 4;
   canvas.setColorDepth(16);
   canvas.createSprite(screenW, screenH);
+  canvas.setSwapBytes(true);
   randomSeed(analogRead(0));
   resetGame();
 }
@@ -193,7 +200,7 @@ void loop() {
 
   if (M5.BtnA.wasPressed()) {
     birdVelocity = jumpStrength;
-    M5.Speaker.playRaw(sfx_wing, sfx_wing_len, SFX_SAMPLE_RATE, false, 1, 0);
+    M5.Speaker.playRaw(sfx_wing, sfx_wing_len, SFX_SAMPLE_RATE);
   }
 
   birdVelocity += gravity;
@@ -214,7 +221,7 @@ void loop() {
     if (!pipes[i].scored && pipes[i].x + pipeWidth < birdX) {
       pipes[i].scored = true;
       score++;
-      M5.Speaker.playRaw(sfx_swoosh, sfx_swoosh_len, SFX_SAMPLE_RATE, false, 1, 1);
+      M5.Speaker.playRaw(sfx_swoosh, sfx_swoosh_len, SFX_SAMPLE_RATE);
     }
     if (birdX + birdRadius > pipes[i].x - pipeCapExtra && birdX - birdRadius < pipes[i].x + pipeWidth + pipeCapExtra) {
       if (birdY - birdRadius < pipes[i].gapY || birdY + birdRadius > pipes[i].gapY + gapHeight)
@@ -223,8 +230,9 @@ void loop() {
   }
 
   if (collided) {
-    M5.Speaker.playRaw(sfx_hit, sfx_hit_len, SFX_SAMPLE_RATE, false, 1, 0);
-    M5.Speaker.playRaw(sfx_die, sfx_die_len, SFX_SAMPLE_RATE, false, 1, 1);
+    M5.Speaker.playRaw(sfx_hit, sfx_hit_len, SFX_SAMPLE_RATE);
+    delay(150);
+    M5.Speaker.playRaw(sfx_die, sfx_die_len, SFX_SAMPLE_RATE);
     if (score > bestScore) bestScore = score;
     state = GAMEOVER;
   }
