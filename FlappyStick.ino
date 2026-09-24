@@ -1,5 +1,6 @@
 #include <M5Unified.h>
 #include "sprites.h"
+#include "sounds.h"
 
 M5Canvas canvas(&M5.Lcd);
 
@@ -23,6 +24,7 @@ const int pipeCapHeight = 6;
 const int pipeCapExtra = 4;
 const int gapHeight = 52;
 const float pipeSpeed = 2.2;
+const float pipeSpacing = 150;
 
 int score = 0, bestScore = 0;
 float bgOffset = 0;
@@ -44,7 +46,7 @@ void resetGame() {
   score = 0;
   int groundY = screenH - groundHeight;
   for (int i = 0; i < pipeCount; i++) {
-    pipes[i].x = screenW + i * (screenW / pipeCount + 70);
+    pipes[i].x = screenW + i * pipeSpacing;
     pipes[i].gapY = random(14, safeMaxGapY(groundY));
     pipes[i].scored = false;
   }
@@ -57,6 +59,7 @@ void setup() {
   screenW = M5.Lcd.width();
   screenH = M5.Lcd.height();
   birdX = screenW / 4;
+  canvas.setColorDepth(16);
   canvas.createSprite(screenW, screenH);
   randomSeed(analogRead(0));
   resetGame();
@@ -190,7 +193,7 @@ void loop() {
 
   if (M5.BtnA.wasPressed()) {
     birdVelocity = jumpStrength;
-    M5.Speaker.tone(800, 40);
+    M5.Speaker.playRaw(sfx_wing, sfx_wing_len, SFX_SAMPLE_RATE, false, 1, 0);
   }
 
   birdVelocity += gravity;
@@ -202,14 +205,16 @@ void loop() {
   for (int i = 0; i < pipeCount; i++) {
     pipes[i].x -= pipeSpeed;
     if (pipes[i].x + pipeWidth < 0) {
-      pipes[i].x = screenW;
+      float maxX = pipes[0].x;
+      for (int j = 1; j < pipeCount; j++) if (pipes[j].x > maxX) maxX = pipes[j].x;
+      pipes[i].x = maxX + pipeSpacing;
       pipes[i].gapY = random(14, safeMaxGapY(groundY));
       pipes[i].scored = false;
     }
     if (!pipes[i].scored && pipes[i].x + pipeWidth < birdX) {
       pipes[i].scored = true;
       score++;
-      M5.Speaker.tone(1200, 30);
+      M5.Speaker.playRaw(sfx_swoosh, sfx_swoosh_len, SFX_SAMPLE_RATE, false, 1, 1);
     }
     if (birdX + birdRadius > pipes[i].x - pipeCapExtra && birdX - birdRadius < pipes[i].x + pipeWidth + pipeCapExtra) {
       if (birdY - birdRadius < pipes[i].gapY || birdY + birdRadius > pipes[i].gapY + gapHeight)
@@ -218,7 +223,8 @@ void loop() {
   }
 
   if (collided) {
-    M5.Speaker.tone(200, 300);
+    M5.Speaker.playRaw(sfx_hit, sfx_hit_len, SFX_SAMPLE_RATE, false, 1, 0);
+    M5.Speaker.playRaw(sfx_die, sfx_die_len, SFX_SAMPLE_RATE, false, 1, 1);
     if (score > bestScore) bestScore = score;
     state = GAMEOVER;
   }
