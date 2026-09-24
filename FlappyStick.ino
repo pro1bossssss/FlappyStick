@@ -1,40 +1,51 @@
 #include <M5Unified.h>
+#include "sprites.h"
 
 M5Canvas canvas(&M5.Lcd);
 
 int screenW, screenH;
 const int groundHeight = 16;
+const uint16_t TRANSPARENT_KEY = 0x0000;
 
 float birdY, birdVelocity;
 const float gravity = 0.5;
 const float jumpStrength = -4.5;
 int birdX;
-const int birdRadius = 8;
+const int birdRadius = 9;
 int wingFrame = 0;
 unsigned long lastWingTime = 0;
 
 struct Pipe { float x; int gapY; bool scored; };
 const int pipeCount = 3;
 Pipe pipes[pipeCount];
-const int pipeWidth = 26;
-const int pipeCapHeight = 8;
+const int pipeWidth = pipe_tile_w;
+const int pipeCapHeight = 6;
 const int pipeCapExtra = 4;
-const int gapHeight = 50;
+const int gapHeight = 52;
 const float pipeSpeed = 2.2;
 
 int score = 0, bestScore = 0;
+float bgOffset = 0;
 float groundOffset = 0;
 
 enum GameState { WAITING, PLAYING, GAMEOVER };
 GameState state = WAITING;
 
+int safeMaxGapY(int groundY) {
+  int minGapY = 14;
+  int maxGapY = groundY - 14 - gapHeight;
+  if (maxGapY < minGapY) maxGapY = minGapY + 1;
+  return maxGapY;
+}
+
 void resetGame() {
   birdY = screenH / 2;
   birdVelocity = 0;
   score = 0;
+  int groundY = screenH - groundHeight;
   for (int i = 0; i < pipeCount; i++) {
-    pipes[i].x = screenW + i * (screenW / pipeCount + 60);
-    pipes[i].gapY = random(20, screenH - groundHeight - 20 - gapHeight);
+    pipes[i].x = screenW + i * (screenW / pipeCount + 70);
+    pipes[i].gapY = random(14, safeMaxGapY(groundY));
     pipes[i].scored = false;
   }
 }
@@ -52,42 +63,52 @@ void setup() {
 }
 
 void drawBackground() {
-  canvas.fillScreen(0x5DA0EC);
-  canvas.fillEllipse(30, 25, 12, 6, TFT_WHITE);
-  canvas.fillEllipse(42, 22, 10, 5, TFT_WHITE);
-  canvas.fillEllipse(150, 35, 14, 7, TFT_WHITE);
-  canvas.fillEllipse(165, 32, 10, 5, TFT_WHITE);
+  int step = bg_tile_w;
+  int off = ((int)bgOffset) % step;
+  for (int x = -off; x < screenW; x += step) {
+    canvas.pushImage(x, 0, bg_tile_w, bg_tile_h, bg_tile);
+  }
 }
 
 void drawGround() {
   int gy = screenH - groundHeight;
-  canvas.fillRect(0, gy, screenW, groundHeight, 0xDDBB55);
-  canvas.fillRect(0, gy, screenW, 4, 0x4CAF50);
-  for (int x = -((int)groundOffset % 12); x < screenW; x += 12) {
-    canvas.drawFastVLine(x, gy + 5, groundHeight - 5, 0xB89B4A);
+  canvas.fillRect(0, gy, screenW, groundHeight, canvas.color565(221,187,85));
+  canvas.fillRect(0, gy, screenW, 4, canvas.color565(76,175,80));
+  int off = ((int)groundOffset) % 12;
+  for (int x = -off; x < screenW; x += 12) {
+    canvas.drawFastVLine(x, gy + 5, groundHeight - 5, canvas.color565(184,155,74));
   }
 }
 
-void drawPipe(int px, int gapY) {
-  int gy = screenH - groundHeight;
-  canvas.fillRect(px, 0, pipeWidth, gapY - pipeCapHeight, 0x2ECC71);
-  canvas.fillRect(px - pipeCapExtra, gapY - pipeCapHeight, pipeWidth + pipeCapExtra * 2, pipeCapHeight, 0x27AE60);
-  int bottomY = gapY + gapHeight;
-  canvas.fillRect(px, bottomY + pipeCapHeight, pipeWidth, gy - (bottomY + pipeCapHeight), 0x2ECC71);
-  canvas.fillRect(px - pipeCapExtra, bottomY, pipeWidth + pipeCapExtra * 2, pipeCapHeight, 0x27AE60);
+void drawPipeColumn(int px, int topH, int bottomStartY, int bottomH) {
+  uint16_t capColor = canvas.color565(70, 150, 60);
+
+  canvas.setClipRect(px, 0, pipeWidth, topH);
+  for (int y = topH - pipe_tile_h; y > -pipe_tile_h; y -= pipe_tile_h) {
+    canvas.pushImage(px, y, pipe_tile_w, pipe_tile_h, pipe_tile);
+  }
+  canvas.clearClipRect();
+  if (topH >= pipeCapHeight) {
+    canvas.fillRect(px - pipeCapExtra, topH - pipeCapHeight, pipeWidth + pipeCapExtra*2, pipeCapHeight, capColor);
+  }
+
+  canvas.setClipRect(px, bottomStartY, pipeWidth, bottomH);
+  for (int y = bottomStartY; y < bottomStartY + bottomH; y += pipe_tile_h) {
+    canvas.pushImage(px, y, pipe_tile_w, pipe_tile_h, pipe_tile);
+  }
+  canvas.clearClipRect();
+  if (bottomH >= pipeCapHeight) {
+    canvas.fillRect(px - pipeCapExtra, bottomStartY, pipeWidth + pipeCapExtra*2, pipeCapHeight, capColor);
+  }
 }
 
 void drawBird(int x, int y) {
-  bool wingUp = (wingFrame % 2 == 0);
-  canvas.fillEllipse(x, y, birdRadius, birdRadius - 2, TFT_YELLOW);
-  if (wingUp) {
-    canvas.fillEllipse(x - 2, y - 2, 6, 3, 0xFFA500);
-  } else {
-    canvas.fillEllipse(x - 2, y + 3, 6, 3, 0xFFA500);
-  }
-  canvas.fillCircle(x + 4, y - 3, 2, TFT_WHITE);
-  canvas.fillCircle(x + 5, y - 3, 1, TFT_BLACK);
-  canvas.fillTriangle(x + birdRadius - 2, y, x + birdRadius + 6, y - 2, x + birdRadius + 6, y + 3, 0xFF6600);
+  const uint16_t* frame; int fw, fh;
+  int f = wingFrame % 3;
+  if (f == 0) { frame = bird_f0; fw = bird_f0_w; fh = bird_f0_h; }
+  else if (f == 1) { frame = bird_f1; fw = bird_f1_w; fh = bird_f1_h; }
+  else { frame = bird_f2; fw = bird_f2_w; fh = bird_f2_h; }
+  canvas.pushImage(x - fw/2, y - fh/2, fw, fh, frame, TRANSPARENT_KEY);
 }
 
 void drawHUD() {
@@ -113,8 +134,14 @@ void drawWaiting() {
 
 void drawGame() {
   drawBackground();
+  int groundY = screenH - groundHeight;
   for (int i = 0; i < pipeCount; i++) {
-    drawPipe((int)pipes[i].x, pipes[i].gapY);
+    int px = (int)pipes[i].x;
+    int topH = pipes[i].gapY;
+    int bottomStartY = pipes[i].gapY + gapHeight;
+    int bottomH = groundY - bottomStartY;
+    if (bottomH < 0) bottomH = 0;
+    drawPipeColumn(px, topH, bottomStartY, bottomH);
   }
   drawGround();
   drawBird(birdX, (int)birdY);
@@ -143,11 +170,9 @@ void drawGameOver() {
 void loop() {
   M5.update();
   groundOffset += pipeSpeed;
+  bgOffset += pipeSpeed * 0.4;
 
-  if (millis() - lastWingTime > 150) {
-    wingFrame++;
-    lastWingTime = millis();
-  }
+  if (millis() - lastWingTime > 120) { wingFrame++; lastWingTime = millis(); }
 
   if (state == WAITING) {
     drawWaiting();
@@ -178,7 +203,7 @@ void loop() {
     pipes[i].x -= pipeSpeed;
     if (pipes[i].x + pipeWidth < 0) {
       pipes[i].x = screenW;
-      pipes[i].gapY = random(20, groundY - 20 - gapHeight);
+      pipes[i].gapY = random(14, safeMaxGapY(groundY));
       pipes[i].scored = false;
     }
     if (!pipes[i].scored && pipes[i].x + pipeWidth < birdX) {
